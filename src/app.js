@@ -88,10 +88,9 @@ server.post("/messages", async (req, res) => {
 server.get("/messages", async (req, res) => {
   let limit = req.query.limit;
   const user = req.headers.user;
-  console.log(limit)
   if(limit === undefined) {
     try {
-      const fullList = await db.collection("messages").find({ $or: [ { from:  user  }, {to: user}, {to: "Todos"} ]}).toArray();
+      const fullList = await db.collection("messages").find({ $or: [ { from:  user  }, {to: user}, {to: "Todos"}, {type: "message"} ]}).toArray();
       return res.send(fullList);
     } catch (error) {
       return res.sendStatus(404);
@@ -99,12 +98,28 @@ server.get("/messages", async (req, res) => {
   } else {
     try {
       limit = parseInt(req.query.limit);
-      const list = await db.collection("messages").find({ $or: [ { from:  user  }, {to: user}, {to: "Todos"} ]}).toArray();
+      const list = await db.collection("messages").find({ $or: [ { from:  user  }, {to: user}, {to: "Todos"}, {type: "message"}  ]}).toArray();
       const limitedList = list.slice(-limit);
       return res.send(limitedList);
     } catch (error) {
       return res.sendStatus(404);
     }
+  }
+})
+
+server.post("/status", async (req, res) => {
+  
+  const user = req.headers.user;
+  try {
+    const already = await db.collection("users").findOne({"name" : user});
+    if(!already) {
+      return res.sendStatus(404);  
+    }else {
+      const finded = await db.collection("users").updateOne({"name" : user}, {$set: { lastStatus: Date.now() }} );
+      return res.sendStatus(200);
+    }
+  } catch (error) {
+    return res.sendStatus(422);
   }
 })
 
