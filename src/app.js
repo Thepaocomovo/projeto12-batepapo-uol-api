@@ -28,10 +28,15 @@ const messageSchema = joi.object({
 server.post("/participants", async (req, res) => {
   const name = req.body;
   const validation = userSchema.validate(name);
+  let already;
   if (validation.error) {
-      return res.status(422).send(validation.error.details.map(value => value.message));
+    return res.status(422).send(validation.error.details.map(value => value.message));
     } else{
-      const already = await db.collection("users").findOne({"name" : name.name});
+      try {
+        already = await db.collection("users").findOne({"name" : name.name});
+      } catch (error) {
+        return res.sendStatus(422);
+      }
       if(!already) {
           try {
               await db.collection("users").insertOne({name: name.name, lastStatus: Date.now()});
@@ -57,29 +62,29 @@ server.get("/participants", async (req, res) => {
 })
 
 server.post("/messages", async (req, res) => {
-  const message = req.body
+  const message = req.body;
   const user = req.headers.user;
   
   const validation = messageSchema.validate(message);
   if(validation.error) {
-    return res.status(422).send(validation.error.details.map(value => value.message))
+    return res.status(422).send(validation.error.details.map(value => value.message));
   } else{
     if(user !== undefined){
       message.from = user;
     } else {
-      return res.status(422).send("\"user\" is required")
+      return res.status(422).send("\"user\" is required");
     }
     message.time = time;
     try {
       const activeUser = await db.collection("users").findOne({"name" : user});
       if(activeUser) {
         await db.collection("messages").insertOne(message);
-        return res.sendStatus(201)
+        return res.sendStatus(201);
       } else{
-        return res.sendStatus(422)
+        return res.sendStatus(422);
       }
     } catch (error) {
-      return res.sendStatus(422)
+      return res.sendStatus(422);
     }
   }
   
@@ -108,7 +113,6 @@ server.get("/messages", async (req, res) => {
 })
 
 server.post("/status", async (req, res) => {
-  
   const user = req.headers.user;
   try {
     const already = await db.collection("users").findOne({"name" : user});
@@ -122,5 +126,28 @@ server.post("/status", async (req, res) => {
     return res.sendStatus(422);
   }
 })
+
+function  cutTimer() {
+  setInterval( async () => {
+    try {
+      const users = await db.collection("users").find().toArray();
+    const expiredUsers = users.filter((user) => (Date.now() - user.lastStatus) > 10000); 
+    for(let i = 0 ; i < expiredUsers.length ; i++) {
+      await db.collection("users").deleteOne({name: expiredUsers[i].name});
+      await db.collection("messages").insertOne({
+        from: expiredUsers[i].name,
+        to: 'Todos',
+        text: 'sai da sala...',
+        type: 'status',
+        time: time
+      });
+    }
+    } catch (error) {
+     return 
+    }
+  }, 15000);
+}
+
+cutTimer()
 
 server.listen (5000, ()=>{console.log("listen on 5000")});
