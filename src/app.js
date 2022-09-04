@@ -14,43 +14,98 @@ mongoClient.connect().then(() => {
 	db = mongoClient.db("bate_papo_uol")
 });
 
-const date = dayjs(new Date()).format('HH:mm:ss')
+const time = dayjs(new Date()).format("HH:mm:ss");
 
 const userSchema = joi.object({
-    name: joi.string().required()
-  });
+  name: joi.string().required()
+});
+const messageSchema = joi.object({
+  to: joi.string().required(),
+  text: joi.string().required(),
+  type: joi.string().required().valid("message","private_message")
+});
 
-server.post('/participants', async (req, res) => {
-    const name = req.body;
-    const validation = userSchema.validate(name);
-    if (validation.error) {
-        res.status(422).send(validation.error.details.map(value => value.message));
-      } else{
-        const already = await db.collection("users").findOne({"name" : name.name});
-        if(!already) {
-            try {
-                await db.collection('users').insertOne({name: name.name, lastStatus: Date.now()});
-                await db.collection('messages').insertOne({from: name.name, to: 'Todos', text: 'entra na sala...', type: 'status', time: date});
-                res.sendStatus(201);
-              } catch (error) {
-                console.error(error);
-                res.sendStatus(422);
-              }
-        } else {
-            res.status(409).send("\"Name\" is already registered in DataBase");
-        }
-        
+server.post("/participants", async (req, res) => {
+  const name = req.body;
+  const validation = userSchema.validate(name);
+  if (validation.error) {
+      return res.status(422).send(validation.error.details.map(value => value.message));
+    } else{
+      const already = await db.collection("users").findOne({"name" : name.name});
+      if(!already) {
+          try {
+              await db.collection("users").insertOne({name: name.name, lastStatus: Date.now()});
+              await db.collection("messages").insertOne({from: name.name, to: "Todos", text: "entra na sala...", type: "status", time: time});
+              return res.sendStatus(201);
+          } catch (error) {
+              console.error(error);
+              return res.sendStatus(422);
+            }
+      } else {
+          return res.status(409).send("\"Name\" is already registered in DataBase");
       }
-  });
-
-  server.get('/participants', async (req, res) => {
-    try {
-        const usersList = await db.collection("users").find().toArray();
-        res.send(usersList)
-    } catch (error) {
-        res.sendStatus(404)
     }
-    
-  })
+});
+
+server.get("/participants", async (req, res) => {
+  try {
+      const usersList = await db.collection("users").find().toArray();
+      return res.send(usersList);
+  } catch (error) {
+      return res.sendStatus(404);
+  }
+})
+
+server.post("/messages", async (req, res) => {
+  const message = req.body
+  const user = req.headers.user;
+  
+  const validation = messageSchema.validate(message);
+  if(validation.error) {
+    return res.status(422).send(validation.error.details.map(value => value.message))
+  } else{
+    if(user !== undefined){
+      message.from = user;
+    } else {
+      return res.status(422).send("\"user\" is required")
+    }
+    message.time = time;
+    try {
+      const activeUser = await db.collection("users").findOne({"name" : user});
+      if(activeUser) {
+        await db.collection("messages").insertOne(message);
+        return res.sendStatus(201)
+      } else{
+        return res.sendStatus(422)
+      }
+    } catch (error) {
+      return res.sendStatus(422)
+    }
+  }
+  
+})
+
+server.get("/messages", async (req, res) => {
+  let limit = req.query.limit;
+  const user = req.headers.user;
+  console.log(limit)
+  if(limit === undefined) {
+    try {
+      const fullList = await db.collection("messages").find({ $or: [ { from:  user  }, {to: user}, {to: "Todos"} ]}).toArray();
+      return res.send(fullList);
+    } catch (error) {
+      return res.sendStatus(404);
+    }
+  } else {
+    try {
+      limit = parseInt(req.query.limit);
+      const list = await db.collection("messages").find({ $or: [ { from:  user  }, {to: user}, {to: "Todos"} ]}).toArray();
+      const limitedList = list.slice(-limit);
+      return res.send(limitedList);
+    } catch (error) {
+      return res.sendStatus(404);
+    }
+  }
+})
 
 server.listen (5000, ()=>{console.log("listen on 5000")});
